@@ -1,6 +1,6 @@
 #!/usr/bin/env python
 '''
-Script to find open reading frames in nucleic acid sequences 
+Script to find open reading frames in nucleic acid sequences
 provided in Fasta format.
 '''
 import re
@@ -40,12 +40,12 @@ def reverseComplement(seq, alphabet='ACGT'):
     Returns the reverse complement of nucleic acid seqence input.
     """
     compl = dict(zip(alphabet, alphabet[::-1]))
-    return ''.join([compl[base] 
+    return ''.join([compl[base]
                     for base in seq.upper().replace('U', 'T')])[::-1]
 
 def findORFs(seqFrame, start='ATG', stop=OCHRE_AMBER_OPAL, minlen=200, frame=1):
     """
-    Searches open reading frames in the input sequence frame.    
+    Searches open reading frames in the input sequence frame.
     Parameter frame is just a label.
     """
     # First, break down NA-sequence into codons
@@ -55,7 +55,7 @@ def findORFs(seqFrame, start='ATG', stop=OCHRE_AMBER_OPAL, minlen=200, frame=1):
         if codon == start:
             starts.append(i)
         elif codon in stop:
-            stops.append(i)    
+            stops.append(i)
     # Find all potential full ORFs(uninterrupted (start, stop) combinations).
     # These represent potential full-length transcripts/peptides.
     # ORF-format: (start, end, length[aa|codons], frame)
@@ -71,14 +71,14 @@ def findORFs(seqFrame, start='ATG', stop=OCHRE_AMBER_OPAL, minlen=200, frame=1):
         if (lengthFreeORF * 3) >= minlen:
             freeORF = (ORFstarts[0], len(codons) - 1, lengthFreeORF, frame)
         pass
-    
+
     # Check the compatibility of potential full ORFs
     # (i, j) : (i, j + n) => (i, j) survives
     # (i, j) : ((i + n) < j, j) => (i, j) survives
     validORFs = []
     i = 0
     while True:
-        if not fullORFs: break 
+        if not fullORFs: break
         activeORF = fullORFs.pop(0)
         validORFs.append(activeORF)
         invalid = []
@@ -92,29 +92,31 @@ def findORFs(seqFrame, start='ATG', stop=OCHRE_AMBER_OPAL, minlen=200, frame=1):
 
 def main(argv):
     contigs = anabl_getContigsFromFASTA(argv[0])
-    minlen = 200
+    minlen = 0 #200
     orffile = open(re.sub('.fa(sta)?$', '.ORF%i.fa' % minlen, argv[0]), 'wb')
     no_orffile = open(re.sub('.fa(sta)?$', '.NOORF%i.fa' % minlen, argv[0]), 'wb')
     orfseqs = open(re.sub('.fa(sta)?$', '.ORFSEQ%i.fa' % minlen, argv[0]), 'wb')
-    
+
     medianFullORF, medianLongestORF = [], []
     validORFs, validFullORFs = 0.0, 0.0
     i = 0
     for id_, seq in contigs:
+        if 'N' in seq:
+            continue
         i += 1
         rcSeq = reverseComplement(seq)
         orf_id = id_.strip('>').strip()
-        
+
         # scan all 6 frames
         ORFs, fullORFs, freeORFs = [], [], []
         for frame in xrange(3):
             currentORFs = findORFs(seq[frame:], minlen=minlen, frame=frame + 1)
             fullORFs.extend(currentORFs[0])
             freeORFs.append(currentORFs[1])
-            currentORFs = findORFs(rcSeq[frame:], minlen=minlen, frame=frame + 1)
+            currentORFs = findORFs(rcSeq[frame:], minlen=minlen, frame=-(frame + 1))
             fullORFs.extend(currentORFs[0])
             freeORFs.append(currentORFs[1])
-        
+
         # get longest ORFs
         # ORF-format: (start, end, length[aa|codons], frame)
         longestFullORF = (None, None, 0, None)
@@ -127,18 +129,26 @@ def main(argv):
         if longestFullORF[2] > 0 and longestFullORF[2] >= longestFreeORF[2]:
             medianFullORF.append(longestFullORF[2] * 3)
             validFullORFs += 1.0
+            if longestFullORF[3] > 0:
+                lFullSeq = seq[longestFullORF[3] - 1:][longestFullORF[0] * 3:longestFullORF[1] * 3 + 1]
+            else:
+                lFullSeq = rcSeq[abs(longestFullORF[3]) - 1:][longestFullORF[0] * 3:longestFullORF[1] * 3 + 1]
             orffile.write('>%s_%if\n%s\n' % (orf_id, len(fullORFs), seq.strip()))
             orfseqs.write('>%s\n%s\n' % (orf_id + 'fORF=%i,%i,frame=%i' % (longestFullORF[0],
                                                                            longestFullORF[1],
-                                                                           longestFullORF[3]), seq))
+                                                                           longestFullORF[3]), lFullSeq))
             sys.stdout.write('\r%i sequences processed, %i sequences with ORF, %i sequences with fullORF' % (i, validORFs+validFullORFs, validFullORFs))
 
         elif longestFreeORF[2] > 0 and longestFreeORF[2] > longestFullORF[2]:
             medianLongestORF.append(longestFreeORF[2] * 3)
             validORFs += 1.0
-            orffile.write('>%s_%i\n%s\n' % (orf_id, longestFreeORF[2], seq.strip()))            
-            orfseqs.write('>%s\n%s\n' % (orf_id + 'ORF=%i,frame=%i' % (longestFreeORF[0], 
-                                                                       longestFreeORF[3]), seq))
+            if longestFreeORF[3] > 0:
+                lFreeSeq = seq[longestFreeORF[3] - 1:][longestFreeORF[0] * 3:-1]
+            else:
+                lFreeSeq = rcSeq[abs(longestFreeORF[3]) - 1:][longestFreeORF[0] * 3:-1]
+            orffile.write('>%s_%i\n%s\n' % (orf_id, longestFreeORF[2], seq.strip()))
+            orfseqs.write('>%s\n%s\n' % (orf_id + 'ORF=%i,frame=%i' % (longestFreeORF[0],
+                                                                       longestFreeORF[3]), lFreeSeq))
             sys.stdout.write('\r%i sequences processed, %i sequences with ORF, %i sequences with fullORF' % (i, validORFs+validFullORFs, validFullORFs))
 
         else:
@@ -146,14 +156,14 @@ def main(argv):
 
 
             # continue
-        #sys.stdout.write('\r%i sequences processed, %i sequences with ORF (%.3f, medLen=%f), %i sequences with fullORF (%.3f, medLen=%f (%i))' % (i, validORFs+validFullORFs, (validORFs+validFullORFs)/i, 
+        #sys.stdout.write('\r%i sequences processed, %i sequences with ORF (%.3f, medLen=%f), %i sequences with fullORF (%.3f, medLen=%f (%i))' % (i, validORFs+validFullORFs, (validORFs+validFullORFs)/i,
         #                                                                                                                                         np.median(medianFullORF+medianLongestORF),
-        #                                                                                                                                         validFullORFs, validFullORFs/i, np.median(medianFullORF), len(medianFullORF)))       
+        #                                                                                                                                         validFullORFs, validFullORFs/i, np.median(medianFullORF), len(medianFullORF)))
         #break
         pass
-    
+
     sys.stdout.write('\r%i sequences processed, %i sequences with ORF (%.3f, medLen=%f), %i sequences with fullORF (%.3f, medLen=%f (%i))' % (i, validORFs+validFullORFs, (validORFs+validFullORFs)/i, np.median(medianFullORF+medianLongestORF), validFullORFs, validFullORFs/i, np.median(medianFullORF), len(medianFullORF)))
-    
+
 
 
     orfseqs.close()
@@ -165,10 +175,10 @@ def main(argv):
 
 
 def main2(argv):
-    
+
     # print findORFs('ATGATGACGGGAAAACCACCCGCGTGATGACGTGA')
     contigs = anabl_getContigsFromFASTA(argv[0])
-    minlen = 200
+    minlen = 0#200
 
     orffile = open(re.sub('.fa(sta)?$', '.ORF%i.fa' % minlen, argv[0]), 'wb')
     no_orffile = open(re.sub('.fa(sta)?$', '.NOORF%i.fa' % minlen, argv[0]), 'wb')
@@ -185,7 +195,7 @@ def main2(argv):
 
         ORFs = []
         fullORFs, longestORF= [], []
-        for frame in xrange(3):            
+        for frame in xrange(3):
             ORFs = findORFs(seq[frame:], minlen=minlen, frame=frame+1)
             fullORFs.extend(ORFs[0])
             longestORF.append((ORFs[1][1], frame+1))
@@ -193,10 +203,10 @@ def main2(argv):
             fullORFs.extend(ORFs[0])
             longestORF.append((ORFs[1][1], -(frame+1)))
 
-        
+
         longestFullORF, fullFrame = sorted(fullORFs, key=lambda x:(x[1]-x[0]+1))[-1] if len(fullORFs) > 0 else (None, None)
 
-        #longestFullORF, fullFrame = sorted([((ORF[1]-ORF[0]+1), ORF[2]) 
+        #longestFullORF, fullFrame = sorted([((ORF[1]-ORF[0]+1), ORF[2])
         #                                    for ORF in fullORFs])[-1] if len(fullORFs) > 0 else (0, None)
 
         # longestORF = (ORFstarts[0], len(codons) - ORFstarts[0])
@@ -214,33 +224,33 @@ def main2(argv):
         if lengthLongestFullORF > 0 and lengthLongestFullORF >= lengthLongestORF:
             medianFullORF.append(lengthLongestFullORF * 3)
             validFullORFs += 1.0
-            orffile.write('>%s_%if\n%s\n' % (id_.strip('>').strip(), 
-                                             sum(map(len, fullORFs)), 
+            orffile.write('>%s_%if\n%s\n' % (id_.strip('>').strip(),
+                                             sum(map(len, fullORFs)),
                                              seq.strip()))
             orf_id = id_.strip('>').strip() + 'fORF=%i,%i,frame=%i' % longestFullORF + (fullFrame,)
-            orfseqs.write('>%s\n%s\n' % (orf_id, seq))            
+            orfseqs.write('>%s\n%s\n' % (orf_id, seq))
             sys.stdout.write('\r%i sequences processed, %i sequences with ORF, %i sequences with fullORF' % (i, validORFs+validFullORFs, validFullORFs))
 
         elif lengthLongestORF > 0 and lengthLongestORF > lengthLongestFullORF:
             medianLongestORF.append(lengthLongestORF * 3)
             validORFs += 1.0
-            orffile.write('>%s_%i\n%s\n' % (id_.strip('>').strip(), 
+            orffile.write('>%s_%i\n%s\n' % (id_.strip('>').strip(),
                                             longestORF[0], seq.strip()))
             sys.stdout.write('\r%i sequences processed, %i sequences with ORF, %i sequences with fullORF' % (i, validORFs+validFullORFs, validFullORFs))
         else:
-            no_orffile.write('>%s_%i\n%s\n' % (id_.strip('>').strip(), 
+            no_orffile.write('>%s_%i\n%s\n' % (id_.strip('>').strip(),
                                                0, seq.strip()))
             orf_id = id_.strip('>').strip() + 'ORF=%i,frame=%i' % (longestORF, frame_)
-            orfseqs.write('>%s\n%s\n' % (orf_id, seq))            
+            orfseqs.write('>%s\n%s\n' % (orf_id, seq))
             # continue
         # break
         pass
-    
-    print 'X' 
-    #sys.stdout.write('%i sequences processed, %i sequences with ORF (%.3f, medLen=%f), %i sequences with fullORF (%.3f, medLen=%f (%i))' % (i, validORFs+validFullORFs, (validORFs+validFullORFs)/i, 
+
+    print 'X'
+    #sys.stdout.write('%i sequences processed, %i sequences with ORF (%.3f, medLen=%f), %i sequences with fullORF (%.3f, medLen=%f (%i))' % (i, validORFs+validFullORFs, (validORFs+validFullORFs)/i,
     #                                                                                                                                        np.median(medianFullORF+medianLongestORF),
-    #                                                                                                                                        validFullORFs, validFullORFs/i, np.median(medianFullORF), len(medianFullORF)))       
- 
+    #                                                                                                                                        validFullORFs, validFullORFs/i, np.median(medianFullORF), len(medianFullORF)))
+
     orfseqs.close()
     orffile.close()
     no_orffile.close()
@@ -251,7 +261,7 @@ def main2(argv):
     pass
 
 
-if __name__ == '__main__': main(sys.argv[1:])       
+if __name__ == '__main__': main(sys.argv[1:])
 
 """AA,CTA,GAT,TTT,TCT,TAT,AAA,TAG
 ATG,CTT,CTT,ATT,CAT,TCA,ACG,TCA,CCA,AAC,ATG,GTA,TCA,TTT,CTC,CTA,CTT,TGT,TAT,CCA,AAT,TTG,TAT,CTA,AAG,AAA,TTT,ATT,GTT,TAC,ACA,TTT,ATC,TAA,TAA,CGT,CTA,AAC,ATG,GTC,AAC,GGG,GCA,TTA,ATT,GGG,TGA,TTAACGAAGATGTAGCCCTTTGTAAGGCGTGGGTAATTGTTAACGAAGACAATGTCAATGGAATGTACCAAGCATCATAATATTTTGGGGCTTGAGTTTATGCTTATTTCAACAGCAACCTACAAATTTTGTCAGGCAAAGAAACCCACATAGGGGGAGGCATTGAGTCTCGCTTGAAA
