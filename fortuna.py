@@ -179,8 +179,8 @@ if __name__ == '__main__':
                         nlen = (end + 3) - (start + 1) + 1
                         plen = nlen / 3
                         _id = _id.strip().replace(' ', '_')
-                        head = '_CDS%i:%i%s:%i-%i:%i:%s:%.3f' % (_CDS, i, mod, start + 1, end + 3,  nlen, orf[3], orf[4])
-                        orf_out.write('%s:%s\n%s\n' % (_id, head, _seq[frame:][start:end + 3]))
-                        head = '_CDS%i:%i%s:%i-%i:%i:%s:%.3f' % (_CDS, i, mod, start + 1, end + 3,  plen, orf[3], orf[4])
-                        pep_out.write('%s:%s\n%s\n' % (_id, head, translate(_seq[frame:][start:end + 3])))
+                        head = '%i%s:%i-%i:%i:%s:%.3f' % (i, mod, start + 1, end + 3,  nlen, orf[3], orf[4])
+                        orf_out.write('%s_CDS%i:%s\n%s\n' % (_id, _CDS, head, _seq[frame:][start:end + 3]))
+                        head = '%i%s:%i-%i:%i:%s:%.3f' % (i, mod, start + 1, end + 3,  plen, orf[3], orf[4])
+                        pep_out.write('%s_CDS%i:%s\n%s\n' % (_id, _CDS, head, translate(_seq[frame:][start:end + 3])))
                         _CDS += 1
