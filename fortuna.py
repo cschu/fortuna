@@ -189,8 +189,7 @@ def processFile(_in, minlen=200):
                     start, end = orf[0], orf[1]
                     nlen = (end + 3) - (start + 1) + 1
                     plen = nlen / 3
-
-                    yield _id, i, mod, start + 1, end + 3, orf[3], orf[4], nlen, plen, _CDS
+                    yield _id.strip().replace(' ', '_'), _seq, i, mod, start + 1, end + 3, orf[3], orf[4], nlen, plen, _CDS
                     _CDS += 1
 
 
@@ -206,9 +205,8 @@ if __name__ == '__main__':
     _file, minlen = args.seqfile, args.minlen
     with open(_file + '.orf%i.fa' % minlen, 'w') as orf_out, open(_file + '.pep%i.fa' % minlen, 'w') as pep_out:
         for orf in processFile(readFasta(_file), minlen=minlen):
-            # orf: _id, i, mod, start + 1, end + 3, orf[3], orf[4], nlen, plen, _CDS
-            _id = orf[0].strip().replace(' ', '_')
-            i, mod, start, end, frame, pr, nlen, plen, _CDS = orf[1:]
+            # orf: _id, _seq, i, mod, start + 1, end + 3, orf[3], orf[4], nlen, plen, _CDS
+            id_, _seq, i, mod, start, end, frame, pr, nlen, plen, _CDS = orf
 
             head = '%i%s:%i-%i:%i:%s:%.3f' % (i, mod, start + 1, end + 3,  nlen, frame, pr)
             orf_out.write('>%s_CDS%i:%s\n%s\n' % (_id, _CDS, head, _seq[frame:][start:end + 3]))
