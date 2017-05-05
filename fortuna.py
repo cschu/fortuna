@@ -101,22 +101,45 @@ def findORFs(seqFrame, start='ATG', stop=OCHRE_AMBER_OPAL, minlen=200, frame=1, 
     # ORF-format: (start, end, length[aa|codons], frame)
     fullORFs = sorted((pair[0].pos, pair[1].pos, pair[1].pos - pair[0].pos, frame, pair[0].prob * pair[1].prob)
                       for pair in it.product(starts, stops) if pair[0].pos < pair[1].pos)
-    # Now look for the longest unterminated ORF (free ORF)
+
+    # the freeORF is a potential coding sequence missing both start and stop codon
+    # this can only occur if there are neither starts nor stops present in the sequence
+    freeORF = None
+    if not starts and not stops:
+        freeORF = (0, len(seqFrame), len(seqFrame), frame, 1.0)
+    yield freeORF
+        
+ 
+    # Extract the headless ORF in the sequence, 
+    # i.e., the sequence from the beginning of the sequence until the first stop.
+    # This ORF only exists if it does not contain an AUG, otherwise 
+    # it would overlap the first full ORF.
+    headlessORF = None
+    # starts = [Codon()] + starts
+    starts = starts + [Codon()]
+    stops = stops + [Codon(pos=starts[0].pos + 1)]
+    if starts[0].pos > stops[0].pos and stops[0].pos > minlen:
+        headlessORF = (0, stops[0].pos, stops[0].pos, frame, 1.0)
+        pass
+    yield headlessORF
+    # Now look for the longest unterminated ORF (taillessORF)
     # i.e., the first start after the last detected stop
-    stops = [Codon()] + stops
+    # starts = starts[1:]
+    starts = starts[:-1]
+    stops = [Codon()] + stops[:-1]
     ORFstarts = (start for start in starts if start.pos > stops[-1].pos)
-    freeORF = None # (-1, -1, 0, 1, 1.0)
-    freeORFStart = None
+    taillessORF = None # (-1, -1, 0, 1, 1.0)
+    taillessORFStart = None
     try:
-        freeORFStart = next(ORFstarts)
+        taillessORFStart = next(ORFstarts)
     except:
         pass
-    if freeORFStart is not None:
-        lengthFreeORF = len(seqFrame) - freeORFStart.pos#n_codons - freeORFStart.pos
-        if lengthFreeORF  >= minlen:
-            freeORF = (freeORFStart.pos, len(seqFrame), lengthFreeORF, frame, freeORFStart.prob)
+    if taillessORFStart is not None:
+        lengthTaillessORF = len(seqFrame) - taillessORFStart.pos#n_codons - freeORFStart.pos
+        if lengthTaillessORF  >= minlen:
+            taillessORF = (taillessORFStart.pos, len(seqFrame), lengthTaillessORF, frame, taillessORFStart.prob)
         pass
-    yield freeORF
+    yield taillessORF
 
 
     # The ORFlist is sorted so that
@@ -160,7 +183,7 @@ if __name__ == '__main__':
     assert(args.minlen > 0)
 
     _file, minlen = args.seqfile, args.minlen
-    with open(_file + '.orf.fa', 'w') as orf_out, open(_file + '.pep.fa', 'w') as pep_out:
+    with open(_file + '.orf%i.fa' % minlen, 'w') as orf_out, open(_file + '.pep%i.fa' % minlen, 'w') as pep_out:
         for _id, _seq in readFasta(_file):
             _seq = _seq.upper().replace('U', 'T')
             _CDS = 1
@@ -169,11 +192,17 @@ if __name__ == '__main__':
                     _seq = reverseComplement(_seq)
                 for frame in range(3):
                     for i, orf in enumerate(findORFs(_seq[frame:], minlen=minlen, frame='%c%i' % (strand, frame + 1), allowN=False)):
-                        mod = ''
-                        if i == 0 and orf:
-                            mod = '.free'
-                        elif not orf:
+                        if not orf:
                             continue
+                        
+                        if i == 2:
+                            mod = '.tailless'
+                        elif i == 1: # and orf:
+                            mod = '.headless'
+                        elif i == 0:
+                            mod = '.free'
+                        else:
+                            mod = ''
 
                         start, end = orf[0], orf[1]
                         nlen = (end + 3) - (start + 1) + 1
