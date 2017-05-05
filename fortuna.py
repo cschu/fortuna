@@ -185,11 +185,11 @@ def processFile(_in, minlen=200):
                     if not orf:
                         continue
 
-                    mod = orf_mod.get(i, '')
+                    mod = orf_mod.get(i, '.full')
                     start, end = orf[0], orf[1]
                     nlen = (end + 3) - (start + 1) + 1
                     plen = nlen / 3
-                                        
+
                     yield _id, i, mod, start + 1, end + 3, orf[3], orf[4], nlen, plen, _CDS
                     _CDS += 1
 
