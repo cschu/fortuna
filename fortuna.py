@@ -108,11 +108,11 @@ def findORFs(seqFrame, start='ATG', stop=OCHRE_AMBER_OPAL, minlen=200, frame=1, 
     if not starts and not stops:
         freeORF = (0, len(seqFrame), len(seqFrame), frame, 1.0)
     yield freeORF
-        
- 
-    # Extract the headless ORF in the sequence, 
+
+
+    # Extract the headless ORF in the sequence,
     # i.e., the sequence from the beginning of the sequence until the first stop.
-    # This ORF only exists if it does not contain an AUG, otherwise 
+    # This ORF only exists if it does not contain an AUG, otherwise
     # it would overlap the first full ORF.
     headlessORF = None
     # starts = [Codon()] + starts
@@ -171,6 +171,27 @@ def findORFs(seqFrame, start='ATG', stop=OCHRE_AMBER_OPAL, minlen=200, frame=1, 
             fullORFs.pop(p)
 
 
+def processFile(_in, minlen=200):
+    orf_mod = {0: '.free', 1: '.headless', 2: '.tailless'}
+    for record in _in:
+        _id = record[0].strip('>').strip('@')
+        _seq = record[1].upper().replace('U', 'T')
+        _CDS = 1
+        for strand in '+-':
+            if strand == '-':
+                _seq = reverseComplement(_seq)
+            for frame in range(3):
+                for i, orf in enumerate(findORFs(_seq[frame:], minlen=minlen, frame='%c%i' % (strand, frame + 1), allowN=False)):
+                    if not orf:
+                        continue
+
+                    mod = orf_mod.get(i, '')
+                    start, end = orf[0], orf[1]
+                    nlen = (end + 3) - (start + 1) + 1
+                    plen = nlen / 3
+                                        
+                    yield _id, i, mod, start + 1, end + 3, orf[3], orf[4], nlen, plen, _CDS
+                    _CDS += 1
 
 
 if __name__ == '__main__':
@@ -184,32 +205,12 @@ if __name__ == '__main__':
 
     _file, minlen = args.seqfile, args.minlen
     with open(_file + '.orf%i.fa' % minlen, 'w') as orf_out, open(_file + '.pep%i.fa' % minlen, 'w') as pep_out:
-        for _id, _seq in readFasta(_file):
-            _seq = _seq.upper().replace('U', 'T')
-            _CDS = 1
-            for strand in '+-':
-                if strand == '-':
-                    _seq = reverseComplement(_seq)
-                for frame in range(3):
-                    for i, orf in enumerate(findORFs(_seq[frame:], minlen=minlen, frame='%c%i' % (strand, frame + 1), allowN=False)):
-                        if not orf:
-                            continue
-                        
-                        if i == 2:
-                            mod = '.tailless'
-                        elif i == 1: # and orf:
-                            mod = '.headless'
-                        elif i == 0:
-                            mod = '.free'
-                        else:
-                            mod = ''
+        for orf in processFile(readFasta(_file), minlen=minlen):
+            # orf: _id, i, mod, start + 1, end + 3, orf[3], orf[4], nlen, plen, _CDS
+            _id = orf[0].strip().replace(' ', '_')
+            i, mod, start, end, frame, pr, nlen, plen, _CDS = orf[1:]
 
-                        start, end = orf[0], orf[1]
-                        nlen = (end + 3) - (start + 1) + 1
-                        plen = nlen / 3
-                        _id = _id.strip().replace(' ', '_')
-                        head = '%i%s:%i-%i:%i:%s:%.3f' % (i, mod, start + 1, end + 3,  nlen, orf[3], orf[4])
-                        orf_out.write('%s_CDS%i:%s\n%s\n' % (_id, _CDS, head, _seq[frame:][start:end + 3]))
-                        head = '%i%s:%i-%i:%i:%s:%.3f' % (i, mod, start + 1, end + 3,  plen, orf[3], orf[4])
-                        pep_out.write('%s_CDS%i:%s\n%s\n' % (_id, _CDS, head, translate(_seq[frame:][start:end + 3])))
-                        _CDS += 1
+            head = '%i%s:%i-%i:%i:%s:%.3f' % (i, mod, start + 1, end + 3,  nlen, frame, pr)
+            orf_out.write('>%s_CDS%i:%s\n%s\n' % (_id, _CDS, head, _seq[frame:][start:end + 3]))
+            head = '%i%s:%i-%i:%i:%s:%.3f' % (i, mod, start + 1, end + 3,  plen, frame, pr)
+            pep_out.write('>%s_CDS%i:%s\n%s\n' % (_id, _CDS, head, translate(_seq[frame:][start:end + 3])))
