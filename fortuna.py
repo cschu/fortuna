@@ -90,6 +90,7 @@ def findORFs(seqFrame, start='ATG', stop=OCHRE_AMBER_OPAL, minlen=200, frame=1, 
     codons = ((i, seqFrame[i:i+3]) for i in xrange(0, len(seqFrame), 3))
     starts, stops = list(), list()
     p_start, p_stop = list(), list()
+    i = 0
     for i, codon in codons:
         if codon == start or (allowN and start_re.match(codon)):
             starts.append(Codon(i, calcCodonProbability(codon)))
@@ -104,9 +105,12 @@ def findORFs(seqFrame, start='ATG', stop=OCHRE_AMBER_OPAL, minlen=200, frame=1, 
 
     # the freeORF is a potential coding sequence missing both start and stop codon
     # this can only occur if there are neither starts nor stops present in the sequence
+    iFrame = abs(int(frame)-1)
     freeORF = None
     if not starts and not stops:
         freeORF = (0, len(seqFrame), len(seqFrame), frame, 1.0)
+        #print(seqFrame, len(seqFrame))
+        #freeORF = (iFrame, len(seqFrame) - 1, len(seqFrame) - iFrame, frame, 1.0)
     yield freeORF
 
 
@@ -187,9 +191,12 @@ def processFile(_in, minlen=200):
 
                     mod = orf_mod.get(i, '.full')
                     start, end = orf[0], orf[1]
-                    nlen = (end + 3) - (start + 1) + 1
+                    if mod in ('.tailless', '.free'):
+                        nlen = end - start + 1
+                    else:
+                        nlen = (end + 3) - (start + 1) + 1
                     plen = nlen / 3
-                    yield _id.strip().replace(' ', '_'), _seq, i, mod, start + 1, end + 3, orf[3], orf[4], nlen, plen, _CDS
+                    yield _id.strip().replace(' ', '_'), _seq, i, mod, start, end, frame, orf[4], nlen, plen, _CDS, strand
                     _CDS += 1
 
 
@@ -206,9 +213,21 @@ if __name__ == '__main__':
     with open(_file + '.orf%i.fa' % minlen, 'w') as orf_out, open(_file + '.pep%i.fa' % minlen, 'w') as pep_out:
         for orf in processFile(readFasta(_file), minlen=minlen):
             # orf: _id, _seq, i, mod, start + 1, end + 3, orf[3], orf[4], nlen, plen, _CDS
-            id_, _seq, i, mod, start, end, frame, pr, nlen, plen, _CDS = orf
+            _id, _seq, i, mod, start, end, frame, pr, nlen, plen, _CDS, strand = orf
 
-            head = '%i%s:%i-%i:%i:%s:%.3f' % (i, mod, start + 1, end + 3,  nlen, frame, pr)
-            orf_out.write('>%s_CDS%i:%s\n%s\n' % (_id, _CDS, head, _seq[frame:][start:end + 3]))
-            head = '%i%s:%i-%i:%i:%s:%.3f' % (i, mod, start + 1, end + 3,  plen, frame, pr)
-            pep_out.write('>%s_CDS%i:%s\n%s\n' % (_id, _CDS, head, translate(_seq[frame:][start:end + 3])))
+            orfseq = _seq[frame:][start:end + 3]
+            orfseq_aa = translate(orfseq)
+
+            nlen, plen = map(len, (orfseq, orfseq_aa))
+            print(orf, orfseq, len(orfseq))
+
+            out_end = end
+            if mod not in ('.free', '.tailless'):
+                out_end += 3
+
+
+            out_frame = '%c%i' % (strand, frame + 1)
+            head = '%i%s:%i-%i:%i:%s:%.3f' % (i, mod, start + 1, out_end,  nlen, out_frame, pr)
+            orf_out.write('>%s_CDS%i:%s\n%s\n' % (_id, _CDS, head, orfseq))
+            head = '%i%s:%i-%i:%i:%s:%.3f' % (i, mod, start + 1, out_end,  plen, out_frame, pr)
+            pep_out.write('>%s_CDS%i:%s\n%s\n' % (_id, _CDS, head, orfseq_aa))
