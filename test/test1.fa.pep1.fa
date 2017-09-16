@@ -1,0 +1,14 @@
+>test_CDS1:0.free:1-22:7:+1:1.000
+KVTHALL
+>test_CDS2:1.headless:1-6:1:+2:1.000
+K
+>test_CDS3:3.full:10-21:3:+2:1.000
+MPF
+>test_CDS4:0.free:1-20:6:+3:1.000
+SDPCPF
+>test_CDS5:0.free:1-22:7:-1:1.000
+LKGHGSL
+>test_CDS6:2.tailless:10-21:3:-2:1.000
+MGH
+>test_CDS7:0.free:1-20:6:-3:1.000
+KRAWVT
