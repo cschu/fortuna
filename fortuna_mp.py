@@ -34,7 +34,7 @@ def blastCheckORF(orf, blast_db, blast_cmd, blaster='blastn'):
         blast_hit = blast_hit[0].split()
 
         orftype = 'partial'
-        if mod == '.full' and (qstart, qend, sstart, send) == (1, qlen, 1, slen):
+        if _mod == '.full' and (qstart, qend, sstart, send) == (1, qlen, 1, slen):
             orftype = 'full'
 
         orf_result = (orf[0], orf[2:], qstart, qend, qlen,
@@ -114,7 +114,7 @@ def processRecord(record, blast_db=None, blast_cmd=None, blaster=None, minlen=20
                     nlen = (end + 3) - (start + 1) + 1
                 plen = nlen / 3
                 orf_result = (_id.strip().replace(' ', '_'), _seq, i, mod, start, end, frame, orf[4], nlen, plen, len(foundORFs) + 1, strand)
-                if blast is not None:
+                if blaster is not None:
                     assert blast_db is not None and blast_cmd is not None
                     blast_result = blastCheckORF(orf_result, blast_db, blast_cmd, blaster=blaster)
                     if blast_result is not None:
