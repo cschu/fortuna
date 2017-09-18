@@ -9,8 +9,9 @@ ORF_MOD = {0: '.free', 1: '.headless', 2: '.tailless'}
 
 def processFileMP(_in, nthreads, minlen=200):
     pool = mp.Pool(processes=nthreads)
+    results = [pool.apply_async(processRecord, args=(record, ), kwds={'minlen': minlen}) for record in _in]
 
-    for query_results in [pool.apply_async(processRecord, args=(record, ), kwds={'minlen': minlen}) for record in _in]:
+    for query_results in (p.get() for p in results):
         for res in query_results:
             yield res
 
