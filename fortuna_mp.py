@@ -10,7 +10,7 @@ ORF_MOD = {0: '.free', 1: '.headless', 2: '.tailless'}
 
 def processFileMP(_in, nthreads, blast_db=None, blast_cmd=None, blaster=None, minlen=200):
     pool = mp.Pool(processes=nthreads)
-    kwargs = {'minlen': minlen, 'blast_db': None, 'blaster': None, 'blast_cmd': None}
+    kwargs = {'minlen': minlen, 'blast_db': blast_db, 'blaster': blaster, 'blast_cmd': blast_cmd}
     results = [pool.apply_async(processRecord, args=(record, ), kwds=kwargs) for record in _in]
 
     for query_results in (p.get() for p in results):
@@ -32,9 +32,11 @@ def blastCheckORF(orf, blast_db, blast_cmd, blaster='blastn'):
     orf_result = None
     if blast_hit and float(blast_hit[0].split()[2]) > 75:
         blast_hit = blast_hit[0].split()
+        qstart, qend, sstart, send = map(int, blast_hit[6:10])
+        qlen, slen = map(int, blast_hit[12:14])
 
         orftype = 'partial'
-        if mod == '.full' and (qstart, qend, sstart, send) == (1, qlen, 1, slen):
+        if _mod == '.full' and (qstart, qend, sstart, send) == (1, qlen, 1, slen):
             orftype = 'full'
 
         orf_result = (orf[0], orf[2:], qstart, qend, qlen,
@@ -114,13 +116,13 @@ def processRecord(record, blast_db=None, blast_cmd=None, blaster=None, minlen=20
                     nlen = (end + 3) - (start + 1) + 1
                 plen = nlen / 3
                 orf_result = (_id.strip().replace(' ', '_'), _seq, i, mod, start, end, frame, orf[4], nlen, plen, len(foundORFs) + 1, strand)
-                if blast is not None:
+                if blaster is not None:
                     assert blast_db is not None and blast_cmd is not None
                     blast_result = blastCheckORF(orf_result, blast_db, blast_cmd, blaster=blaster)
                     if blast_result is not None:
-                        foundORFs.append(orf_result, blast_result)
+                        foundORFs.append((orf_result, blast_result))
                 else:
-                    foundORFs.append(orf_result, None)
+                    foundORFs.append((orf_result, None))
 
     return foundORFs
 
