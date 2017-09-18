@@ -2,6 +2,10 @@
 import sys
 import multiprocessing as mp
 import subprocess as sub
+from collections import namedtuple
+
+BlastHSP = namedtuple('BlastHSP', 'query subject pident length mismatch gapopen qstart qend sstart send qlen slen positive gaps ppos frames staxids salltitles qseq sseq'.split(' '))
+
 
 from fortuna import findORFs, reverseComplement
 import ktoolu_io
@@ -31,7 +35,7 @@ def blastCheckORF(orf, blast_db, blast_cmd, blaster='blastn'):
     blast_hit = runBlast(orf[0], orfseq, blast_cmd, blast_db, blaster)
     orf_result = None
     if blast_hit and float(blast_hit[0].split()[2]) > 75:
-        blast_hit = blast_hit[0].split()
+        blast_hit = BlastHSP(blast_hit[0].split())
         qstart, qend, sstart, send = map(int, blast_hit[6:10])
         qlen, slen = map(int, blast_hit[12:14])
 
