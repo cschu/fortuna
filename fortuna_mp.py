@@ -10,10 +10,10 @@ ORF_MOD = {0: '.free', 1: '.headless', 2: '.tailless'}
 def processFileMP(_in, nthreads, minlen=200):
     pool = mp.Pool(processes=nthreads)
 
-    for query_results in [pool.apply(processRecord, args=(record, ), kwds={'minlen': minlen}) for record in _in]:
+    for query_results in [pool.apply_async(processRecord, args=(record, ), kwds={'minlen': minlen}) for record in _in]:
         for res in query_results:
             yield res
-    
+
 
 def processRecord(record, minlen=200):
     _id = record[0].strip('>').strip('@')
@@ -39,4 +39,5 @@ def processRecord(record, minlen=200):
                 _CDS += 1
     return foundORFs
 
-processFileMP(ktoolu_io.readFastq(sys.argv[1]), 4)
+if __name__ == '__main__':
+    processFileMP(ktoolu_io.readFastq(sys.argv[1]), 4)
