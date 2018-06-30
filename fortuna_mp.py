@@ -4,13 +4,14 @@ import multiprocessing as mp
 import subprocess as sub
 from collections import namedtuple
 
-BlastHSP = namedtuple('BlastHSP', 'query subject pident length mismatch gapopen qstart qend sstart send evalue bitscore qlen slen positive gaps ppos frames staxids salltitles qseq sseq'.split(' '))
-ShortBlastHSP = namedtuple('ShortBlastHSP', 'pident length mismatch gapopen qstart qend sstart send evalue bitscore qlen slen positive gaps ppos frames staxids salltitles qseq sseq'.split(' '))
-ORFDataShort = namedtuple('ORFDataShort', 'orfid mod start end frame orf_prob nlen plen cds strand'.split(' '))
-ORFResult = namedtuple('ORFResult', 'read hsp qstart qend qlen subject pident sstart send slen qseq sseq qmod smod dmod orftype'.split(' '))
-
 from fortuna import findORFs, reverseComplement
 import ktoolu_io
+
+BlastHSP = namedtuple('BlastHSP', 'query subject pident length mismatch gapopen qstart qend sstart send evalue bitscore qlen slen positive gaps ppos frames staxids salltitles sstrand qseq sseq'.split(' '))
+ShortBlastHSP = namedtuple('ShortBlastHSP', 'pident length mismatch gapopen qstart qend sstart send evalue bitscore qlen slen positive gaps ppos frames staxids salltitles sstrand qseq sseq'.split(' '))
+ORFDataShort = namedtuple('ORFDataShort', 'orfid mod start end frame orf_prob nlen plen cds strand'.split(' '))
+ORFResult = namedtuple('ORFResult', 'read hsp qstart qend qlen subject pident sstart send slen qseq sseq qmod smod dmod strand orftype'.split(' '))
+ORFData = namedtuple('ORFData', 'orfid seq orfindex mod start end frame orf_prob nlen plen cds strand'.split(' '))
 
 ORF_MOD = {0: '.free', 1: '.headless', 2: '.tailless'}
 
@@ -27,81 +28,29 @@ def runBlast(qid, qseq, blastcmd, blastdb, blaster):
     pr = sub.Popen(blastcmd % (blaster, blastdb), shell=True, stdin=sub.PIPE, stderr=sub.PIPE, stdout=sub.PIPE)
     out, err = pr.communicate(('>query_%s\n%s\n' % (qid, qseq)).encode())
     if out.decode().strip():
-       return out.decode().strip().split('\n') # [0].split('\t')
-    return list()
+       return BlastHSP(*(out.decode().strip().split('\n')[0].split()))
+    return None
 
-def blastCheckORF(orf, blast_db, blast_cmd, blaster='blastn'):
-    _seq, _mod = orf[1], orf[3]
-    start, end, frame = map(int, orf[4:7])
-    orfseq = _seq[frame:][start:end + 3]
-    blast_hit = runBlast(orf[0], orfseq, blast_cmd, blast_db, blaster)
+def blastCheckORF(orf, blast_db, blast_cmd, blaster='blastn', min_pid=75):
+    def isFullHit(qstart, qend, qlen, sstart, send, slen):
+        return (qstart, qend) == (1, qlen) and sorted((sstart, send)) == [1, slen]
+
+    orfseq = orf.seq[int(orf.frame):][orf.start:orf.end + 3]
     orf_result = None
-    if blast_hit and float(blast_hit[0].split()[2]) > 75:
-        # print(*(blast_hit[0].split()), file=sys.stderr)
-        blast_hit = BlastHSP(*(blast_hit[0].split()))
+    blast_hit = runBlast(orf.orfid, orfseq, blast_cmd, blast_db, blaster)
+    if blast_hit is not None and float(blast_hit.pident) >= min_pid:
         qstart, qend, sstart, send = map(int, blast_hit[6:10])
         qlen, slen = map(int, blast_hit[12:14])
 
         orftype = 'partial'
-        if _mod == '.full' and (qstart, qend, sstart, send) == (1, qlen, 1, slen):
+        if orf.mod == '.full' and isFullHit(qstart, qend, qlen, sstart, send, slen):
             orftype = 'full'
 
-        orf_result = ORFResult(orf[0], ORFDataShort(*(orf[2:])), qstart, qend, qlen,
-                               blast_hit[1], blast_hit[2], sstart, send, slen,
-                               blast_hit[20], blast_hit[21], len(blast_hit[20])%3, len(blast_hit[21])%3,
-                               (len(blast_hit[20]) - blast_hit[21].count('-'))%3, orftype)
+        orf_result = ORFResult(orf.orfid, ORFDataShort(*(orf[2:])), qstart, qend, qlen,
+                               blast_hit.subject, float(blast_hit.pident), sstart, send, slen,
+                               blast_hit.qseq, blast_hit.sseq, len(blast_hit.qseq)%3, len(blast_hit.sseq)%3,
+                               (len(blast_hit.qseq) - blast_hit.sseq.count('-'))%3, blast_hit.sstrand, orftype)
     return orf_result
-
-
-def processORFs(orfdata):
-    orf_count, blast_count = 0, 0
-    fullORFs, truncORFs = list(), list()
-    covered_regions = set()
-    for orf in orfdata:
-        orf_count += 1
-        _seq, mod = orf[1], orf[3]
-        start, end, frame = map(int, orf[4:7])
-        orfseq = _seq[frame:][start:end + 3]
-        # aaseq = translate(orfseq)
-        # test.fq, blastn: 86 98 0.8775510204081632
-        # test.fq, blastp: 24 98 0.24489795918367346
-        # blast_hit = runBlast(_id, aaseq, BLAST_CMD, BLAST_DB, 'blastp')
-        blast_hit = runBlast(orf[0], orfseq, BLAST_CMD, BLAST_DB_CDS, 'blastn')
-        if not blast_hit or float(blast_hit[0].split()[2]) < 75:
-            continue
-        # print(blast_hit)
-        blast_hit = blast_hit[0].split()
-        blast_count += 1
-
-        """['query_m160210_080137_42165_c100957252550000001823219307011657_s1_p0/287/ccs',
-            'GLIADIN.OMEGA.0213.Triticum_aestivum.8099',
-            '98.592', '71', '0', '1', '189', '258', '1185', '1115', '4.75e-29', '124',
-            '258', '1185', '70', '1', '98.59', '1/1', 'N/A', 'N/A',
-            'GAATTCCACAAATGATCTAGGGTACACATGCAACTGTGTCCTTGAGTATGACAACA-CCCTTATCTTCTAG',
-            'GAATTCCACAAATGATCTAGGGTACACATGCAACTGTGTCCTTGAGTATGACAACAACCCTTATCTTCTAG']
-        """
-        qstart, qend, sstart, send = map(int, blast_hit[6:10])
-        qlen, slen = map(int, blast_hit[12:14])
-
-        orf_result = (orf[0], orf[2:], qstart, qend, qlen,
-                      blast_hit[1], blast_hit[2], sstart, send, slen,
-                      blast_hit[20], blast_hit[21], len(blast_hit[20])%3, len(blast_hit[21])%3,
-                      (len(blast_hit[20]) - blast_hit[21].count('-'))%3)
-
-        if mod == '.full':
-            if qstart == 1 and qend == qlen:
-                if send == slen and sstart == 1:
-                    # this is a full hit
-                    covered_regions.add((start, end))
-                    fullORFs.append(orf_result)
-                    continue
-
-        truncORFs.append(orf_result)
-
-    return fullORFs, truncORFs
-
-
-
 
 def processRecord(record, blast_db=None, blast_cmd=None, blaster=None, minlen=200):
     _id = record[0].strip('>').strip('@')
@@ -112,17 +61,17 @@ def processRecord(record, blast_db=None, blast_cmd=None, blaster=None, minlen=20
             _seq = reverseComplement(_seq)
         for frame in range(3):
             for i, orf in enumerate(findORFs(_seq[frame:], minlen=minlen, frame='%c%i' % (strand, frame + 1), allowN=False)):
-                if not orf:
+                if orf is None:
                     continue
-
+                # ORFCandidate = namedtuple('ORFCandidate', 'start end length frame prob'.split(' '))
                 mod = ORF_MOD.get(i, '.full')
-                start, end = orf[0], orf[1]
                 if mod in ('.tailless', '.free'):
-                    nlen = end - start + 1
+                    nlen = orf.end - orf.start + 1
                 else:
-                    nlen = (end + 3) - (start + 1) + 1
+                    nlen = (orf.end + 3) - (orf.start + 1) + 1
                 plen = nlen / 3
-                orf_result = (_id.strip().replace(' ', '_'), _seq, i, mod, start, end, frame, orf[4], nlen, plen, len(foundORFs) + 1, strand)
+                orfid = _id.strip().replace(' ', '_')
+                orf_result = ORFData(orfid, _seq, i, mod, orf.start, orf.end, frame, orf.prob, nlen, plen, len(foundORFs) + 1, strand)
                 if blaster is not None:
                     assert blast_db is not None and blast_cmd is not None
                     blast_result = blastCheckORF(orf_result, blast_db, blast_cmd, blaster=blaster)
