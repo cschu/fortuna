@@ -9,6 +9,7 @@ import re
 import sys
 import argparse
 import itertools as it
+from collections import namedtuple
 
 from ktoolu_io import readFasta
 
@@ -79,6 +80,8 @@ class Codon(object):
         self.pos = pos
         self.prob = prob
 
+ORFCandidate = namedtuple('ORFCandidate', 'start end length frame prob'.split(' '))
+
 def findORFs(seqFrame, start='ATG', stop=OCHRE_AMBER_OPAL, minlen=200, frame=1, allowN=True):
     """
     Searches open reading frames in frame one of the input sequence.
@@ -100,7 +103,7 @@ def findORFs(seqFrame, start='ATG', stop=OCHRE_AMBER_OPAL, minlen=200, frame=1, 
     # Find all potential full ORFs(uninterrupted (start, stop) combinations).
     # These represent potential full-length transcripts/peptides.
     # ORF-format: (start, end, length[aa|codons], frame)
-    fullORFs = sorted((pair[0].pos, pair[1].pos, pair[1].pos - pair[0].pos, frame, pair[0].prob * pair[1].prob)
+    fullORFs = sorted(ORFCandidate(pair[0].pos, pair[1].pos, pair[1].pos - pair[0].pos, frame, pair[0].prob * pair[1].prob)
                       for pair in it.product(starts, stops) if pair[0].pos < pair[1].pos)
 
     # the freeORF is a potential coding sequence missing both start and stop codon
@@ -108,7 +111,7 @@ def findORFs(seqFrame, start='ATG', stop=OCHRE_AMBER_OPAL, minlen=200, frame=1, 
     iFrame = abs(int(frame)-1)
     freeORF = None
     if not starts and not stops:
-        freeORF = (0, len(seqFrame), len(seqFrame), frame, 1.0)
+        freeORF = ORFCandidate(0, len(seqFrame), len(seqFrame), frame, 1.0)
         #print(seqFrame, len(seqFrame))
         #freeORF = (iFrame, len(seqFrame) - 1, len(seqFrame) - iFrame, frame, 1.0)
     yield freeORF
@@ -123,7 +126,7 @@ def findORFs(seqFrame, start='ATG', stop=OCHRE_AMBER_OPAL, minlen=200, frame=1, 
     starts = starts + [Codon()]
     stops = stops + [Codon(pos=starts[0].pos + 1)]
     if starts[0].pos > stops[0].pos and stops[0].pos > minlen:
-        headlessORF = (0, stops[0].pos, stops[0].pos, frame, 1.0)
+        headlessORF = ORFCandidate(0, stops[0].pos, stops[0].pos, frame, 1.0)
         pass
     yield headlessORF
     # Now look for the longest unterminated ORF (taillessORF)
@@ -141,7 +144,7 @@ def findORFs(seqFrame, start='ATG', stop=OCHRE_AMBER_OPAL, minlen=200, frame=1, 
     if taillessORFStart is not None:
         lengthTaillessORF = len(seqFrame) - taillessORFStart.pos#n_codons - freeORFStart.pos
         if lengthTaillessORF  >= minlen:
-            taillessORF = (taillessORFStart.pos, len(seqFrame), lengthTaillessORF, frame, taillessORFStart.prob)
+            taillessORF = ORFCandidate(taillessORFStart.pos, len(seqFrame), lengthTaillessORF, frame, taillessORFStart.prob)
         pass
     yield taillessORF
 
